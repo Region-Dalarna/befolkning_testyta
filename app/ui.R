@@ -11,7 +11,7 @@ shinyUI(
     # ---- Header (matchar .rd-header i regiondalarna_ruf.css) --------------
     tags$div(
       class = 'rd-header',
-      tags$div(class = 'rd-header__title', 'befolkning_testyta'),
+      tags$div(class = 'rd-header__title', 'Befolkningsutvecklingen i Dalarna - experimentyta för analyser'),
       tags$a(
         class  = 'rd-header__right',
         href   = 'https://www.regiondalarna.se',
