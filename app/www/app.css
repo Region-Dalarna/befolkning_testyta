@@ -5,4 +5,112 @@
    kan överstyra den delade identiteten vid behov.
    ============================================================ */
 
-/* Lägg appspecifika regler här. */
+/* ---- Luft mellan kort och KPI-rad inne i flikarna ---- */
+.tab-pane > .rd-card,
+.tab-pane > .rd-kpi-row {
+  margin-bottom: 20px;
+}
+
+/* ---- KPI-rad med fyra rutor (basen i rd har tre) ---- */
+.rd-kpi-row--4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1200px) {
+  .rd-kpi-row--4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .rd-kpi-row--4 { grid-template-columns: 1fr; }
+}
+
+/* ---- Shiny-inputs anpassas till identiteten ---- */
+.control-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.form-control,
+.selectize-input {
+  border: 1px solid var(--rd-border);
+  border-radius: var(--rd-radius-sm);
+  font-family: inherit;
+}
+.form-control:focus,
+.selectize-input.focus {
+  border-color: var(--rd-primary);
+  box-shadow: 0 0 0 3px var(--rd-accent-soft);
+}
+input[type='radio'],
+input[type='checkbox'] {
+  accent-color: var(--rd-primary);
+}
+
+/* ---- sliderInput (ion.rangeSlider) i petrolblått ---- */
+.irs--shiny .irs-bar {
+  background: var(--rd-primary);
+  border-color: var(--rd-primary);
+}
+.irs--shiny .irs-from,
+.irs--shiny .irs-to,
+.irs--shiny .irs-single {
+  background-color: var(--rd-primary);
+}
+.irs--shiny .irs-handle {
+  border-color: var(--rd-primary);
+}
+
+/* ---- Kontrollrad ovanför diagram (t.ex. prognosväljaren) ---- */
+.rd-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  margin-bottom: 8px;
+}
+
+/* ---- Slider med ETT värde: dölj den blå fyllnadsytan som annars ser ut
+       som ett valt intervall ---- */
+.rd-slider-single .irs-bar,
+.rd-slider-single .irs-bar-edge {
+  display: none;
+}
+
+/* ---- Två kartor sida vid sida i flyttrelationsfliken ---- */
+.rd-map-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.rd-map-grid h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+@media (max-width: 1100px) {
+  .rd-map-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- ggiraph: låt SVG:n fylla kortets bredd ---- */
+.girafe_container_std,
+.girafe_container_std svg {
+  width: 100%;
+}
+
+/* ---- Leaflet-kartan i identiteten ---- */
+.leaflet-container {
+  border: 1px solid var(--rd-border);
+  border-radius: var(--rd-radius);
+  font-family: var(--rd-font-sans);
+}
+.leaflet-container .info.legend {
+  font-size: 0.8rem;
+  border-radius: var(--rd-radius-sm);
+}
+
+/* ---- DT-tabeller i identiteten ---- */
+table.dataTable {
+  font-size: 0.92rem;
+}
+table.dataTable thead th {
+  border-bottom: 2px solid var(--rd-primary) !important;
+  font-weight: 500;
+}
+table.dataTable tbody tr:hover {
+  background: var(--rd-accent-soft);
+}
