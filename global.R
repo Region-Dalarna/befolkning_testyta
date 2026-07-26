@@ -58,6 +58,7 @@ inflytt_lansgrans  <- hamta_scb("inflyttningar_lansgrans_raw")
 utflytt_lansgrans  <- hamta_scb("utflyttningar_lansgrans_raw")
 folkmangd_modrar   <- hamta_scb("totfolkmangd_modrar")          # kvinnor i barnafödande ålder
 prognos_utfall     <- hamta_scb("prognos_utfall")
+prognos_historisk  <- hamta_scb("prognos_historisk")            # äldre prognosomgångar
 
 # Flyttar per åldersgrupp (inrikes flytt + in-/utvandring) och födelseland
 flyttar_aldersgrp <- hamta_scb("flyttar_aldersgrupper", kodkol = "region_kod") %>%
@@ -74,10 +75,30 @@ flyttrelationer <- tbl(con, dbplyr::in_schema("mikro_db", "flyttrelationer")) %>
 
 DBI::dbDisconnect(con)
 
-# prognos_utfall har svenska kolumnnamn - standardisera till samma som övriga tabeller
-prognos_utfall <- prognos_utfall %>%
-  rename(ar = `år`, kon = `kön`, alder = `ålder`, varde = `folkmängd`) %>%
-  mutate(prognos_ar = as.integer(prognos_ar))
+# Prognostabellerna har svenska kolumnnamn - standardisera till samma som
+# övriga tabeller. Normaliseringen är tolerant: den döper bara om kolumner
+# som faktiskt finns, så den klarar att prognos_historisk skiljer sig något.
+normalisera_prognos <- function(df) {
+  namnkarta <- c(ar = "år", kon = "kön", alder = "ålder", varde = "folkmängd")
+  for (nytt_namn in names(namnkarta)) {
+    if (namnkarta[[nytt_namn]] %in% names(df)) {
+      df <- rename(df, !!nytt_namn := !!sym(namnkarta[[nytt_namn]]))
+    }
+  }
+  df %>% mutate(ar = as.integer(ar), prognos_ar = as.integer(prognos_ar))
+}
+
+prognos_utfall    <- normalisera_prognos(prognos_utfall)
+prognos_historisk <- normalisera_prognos(prognos_historisk)
+
+# Slå ihop till ETT prognosobjekt. Om samma prognosomgång skulle finnas i
+# båda tabellerna har den aktuella tabellen företräde (skydd mot dubbletter).
+prognos_utfall <- bind_rows(
+  prognos_utfall,
+  prognos_historisk %>%
+    filter(!prognos_ar %in% unique(prognos_utfall$prognos_ar))
+)
+rm(prognos_historisk)
 
 # Säkerställ att år alltid är heltal (kommer ibland som character från databasen)
 stada_ar <- function(df) mutate(df, ar = as.integer(ar))
@@ -135,7 +156,10 @@ kommuner_sf <- kommuner_sf %>%
 lan_sf <- lan_sf %>%
   rename(lankod  = !!hitta_kol(lan_sf, "kod"),
          lannamn = !!hitta_kol(lan_sf, "namn")) %>%
-  mutate(lankod = as.character(lankod))
+  mutate(lankod  = as.character(lankod),
+         # Kartlagrets länsnamn står i genitiv ("Dalarnas", "Stockholms") -
+         # ta bort avslutande s så att det blir "Dalarna", "Stockholm" osv.
+         lannamn = str_remove(str_trim(lannamn), "s$"))
 
 # ==== 4. Hjälpfunktioner =====================================================
 
