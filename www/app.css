@@ -64,11 +64,104 @@ input[type='checkbox'] {
   margin-bottom: 8px;
 }
 
+/* ---- Ändringslogg (fliken Om) ---- */
+.rd-card h3 + ul {
+  margin-top: 0;
+  margin-bottom: 20px;
+  padding-left: 20px;
+}
+.rd-card h3 + ul li {
+  margin-bottom: 4px;
+  font-size: 0.95rem;
+  color: var(--rd-text);
+}
+.rd-card h3 {
+  color: var(--rd-primary);
+}
+
+/* ---- Animeringsknappen (play/paus) vid befolkningspyramidens årsslider -
+       flyttas ned under slidern så den inte hamnar över årsetiketterna, och
+       görs större/tydligare ---- */
+.rd-slider-single {
+  padding-bottom: 30px;
+  position: relative;
+}
+.rd-slider-single .slider-animate-container {
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rd-slider-single .slider-animate-container::after {
+  content: 'Kör animering';
+  font-size: 0.8rem;
+  color: var(--rd-text-muted);
+  white-space: nowrap;
+  order: 2;
+}
+.rd-slider-single .slider-animate-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--rd-primary);
+  color: #fff !important;
+  font-size: 0.9rem;
+  box-shadow: var(--rd-shadow);
+  transition: background 0.15s;
+}
+.rd-slider-single .slider-animate-button:hover {
+  background: var(--rd-primary-dark);
+}
+.rd-slider-single .slider-animate-button .glyphicon {
+  color: #fff;
+  top: 0;
+}
+
+/* ---- Slider med ETT värde: dölj den blå fyllnadsytan som annars ser ut
+       som ett valt intervall (utan animeringsknappens extra utrymme).
+       Bakgrundsfärgen sätts också om till grå som extra säkerhet i fall
+       display:none av någon anledning inte slår igenom. ---- */
+.rd-slider-graybar .irs-bar,
+.rd-slider-graybar .irs-bar-edge {
+  display: none !important;
+  background: var(--rd-gray-light) !important;
+  border-color: var(--rd-gray-light) !important;
+}
+
 /* ---- Slider med ETT värde: dölj den blå fyllnadsytan som annars ser ut
        som ett valt intervall ---- */
 .rd-slider-single .irs-bar,
 .rd-slider-single .irs-bar-edge {
-  display: none;
+  display: none !important;
+  background: var(--rd-gray-light) !important;
+  border-color: var(--rd-gray-light) !important;
+}
+
+/* ---- Källhänvisning under kartor/tabeller (ggplot-diagram har egen
+       inbyggd caption via labs(caption=...) och behöver inte denna) ---- */
+.rd-kalla {
+  font-size: 0.72rem;
+  color: var(--rd-gray);
+  text-align: left;
+  margin-top: 6px;
+}
+
+/* ---- Mjukare övergång vid animeringen av befolkningspyramiden - Shiny
+       byter annars diagrammet abrupt vilket kan uppfattas som ett vitt
+       "blink" mellan varje år. Fast höjd förhindrar också att kortet hoppar
+       till medan diagrammet ritas om. ---- */
+#fig_pyramid {
+  min-height: 520px;
+}
+#fig_pyramid.recalculating {
+  opacity: 0.92;
+  transition: opacity 0.25s ease-in-out;
 }
 
 /* ---- Två kartor sida vid sida i flyttrelationsfliken ---- */
@@ -90,6 +183,20 @@ input[type='checkbox'] {
 .girafe_container_std,
 .girafe_container_std svg {
   width: 100%;
+}
+
+/* ---- Kommun/Län-filtret ovanför Flyttrelationer-kartorna hamnade tidigare
+       bakom kartans zoom-/hemknapp när menyn var öppen, trots höjt z-index.
+       Mer robust lösning: flytta kartans kontroller (som annars ligger
+       högst upp till vänster) till nedre vänstra hörnet istället, långt
+       ifrån filtret. ---- */
+.selectize-dropdown {
+  z-index: 100000 !important;
+}
+#karta_flyttrel_kommun .leaflet-top.leaflet-left,
+#karta_flyttrel_lan .leaflet-top.leaflet-left {
+  top: auto !important;
+  bottom: 10px !important;
 }
 
 /* ---- Leaflet-kartan i identiteten ---- */

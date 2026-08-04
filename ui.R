@@ -2,10 +2,23 @@ source('global.R')
 
 shinyUI(
   fluidPage(
+    shinyjs::useShinyjs(),
     tags$head(
       tags$link(rel = 'icon', type = 'image/x-icon', href = 'favicon.ico'),
       tags$link(rel = 'stylesheet', type = 'text/css', href = 'regiondalarna_ruf.css'),
-      tags$link(rel = 'stylesheet', type = 'text/css', href = 'app.css')
+      tags$link(rel = 'stylesheet', type = 'text/css', href = 'app.css?v=6'),
+      tags$script(HTML("
+        Shiny.addCustomMessageHandler('rd_stang_tooltips', function(mapId) {
+          var el = document.getElementById(mapId);
+          var map = el && el.__leaflet__ ? el.__leaflet__ :
+                    (HTMLWidgets.find('#' + mapId) && HTMLWidgets.find('#' + mapId).getMap ?
+                     HTMLWidgets.find('#' + mapId).getMap() : null);
+          if (!map || !map.eachLayer) return;
+          map.eachLayer(function(layer) {
+            if (layer.closeTooltip) layer.closeTooltip();
+          });
+        });
+      "))
     ),
 
     # ---- Header (matchar .rd-header i regiondalarna_ruf.css) --------------
@@ -45,7 +58,17 @@ shinyUI(
         div(class = 'rd-info',
             HTML(paste0('<strong>Obs!</strong> Födda saknar könsuppdelning. ',
                         'Diagram som bygger på födda (komponenter, netton, fruktsamhet) ',
-                        'visar därför alltid samtliga. Fliken Flyttrelationer har egna filter.')))
+                        'visar därför alltid samtliga. Fliken Flyttrelationer har egna filter.'))),
+        tags$hr(),
+        h3('Ladda ner data'),
+        div(class = 'rd-field',
+            selectizeInput('nedladdning_val', 'Välj dataset',
+                           choices = c('Alla dataset', names(nedladdning_dataset)),
+                           selected = 'Alla dataset', multiple = TRUE,
+                           options = list(placeholder = 'Välj ett eller flera dataset...'))),
+        downloadButton('nedladdning_download', 'Ladda ner Excel',
+                       class = 'rd-btn rd-btn--primary', style = 'width: 100%; justify-content: center;'),
+        uiOutput('nedladdning_info')
       ),
 
       # ---- Huvudinnehåll ----
@@ -69,7 +92,8 @@ shinyUI(
                        div(class = 'rd-slider-single',
                            sliderInput('pyramid_ar', 'År',
                                        min = ar_min, max = ar_max, value = ar_max,
-                                       step = 1, sep = '', width = '320px')),
+                                       step = 1, sep = '', width = '320px',
+                                       animate = animationOptions(interval = 1600, loop = FALSE))),
                        girafeOutput('fig_pyramid', height = '520px'))
           ),
 
@@ -116,7 +140,7 @@ shinyUI(
                        div(class = 'rd-controls',
                            selectInput('flyttgrp_ar', 'År',
                                        choices = flyttgrp_ar_val, width = '140px')),
-                       girafeOutput('fig_aldersgrupp_ar', height = '420px'))
+                       girafeOutput('fig_aldersgrupp_ar', height = '650px'))
           ),
 
           # ================= Flik 4: Flyttrelationer =================
@@ -126,7 +150,9 @@ shinyUI(
                        p(class = 'rd-subtitle',
                          'Se varifrån inflyttarna kommer och vart utflyttarna tar vägen - grannkommuner och övriga Sverige. Kartorna visar summan för valt årsintervall; slå ihop flera år för att hantera låga tal. Avgränsa på åldersgrupp för att t.ex. följa barnfamiljer. Tal under 3 visas som "färre än 3".'),
                        div(class = 'rd-controls',
-                           selectInput('rel_kommun', 'Kommun', choices = rel_kommun_val, width = '200px'),
+                           selectInput('rel_kommun', 'Kommun / Län',
+                                       choices = rel_kommun_val, width = '260px')),
+                       div(class = 'rd-controls',
                            radioButtons('rel_typ', 'Visa',
                                         choices = c('Inflyttning', 'Utflyttning', 'Flyttnetto'),
                                         inline = TRUE),
@@ -143,12 +169,14 @@ shinyUI(
                              leafletOutput('karta_flyttrel_kommun', height = 460)),
                            div(
                              h3(textOutput('rubrik_karta_lan', inline = TRUE)),
-                             leafletOutput('karta_flyttrel_lan', height = 460)))),
+                             leafletOutput('karta_flyttrel_lan', height = 460))),
+                       p(class = 'rd-kalla', 'Källa: Statistiska centralbyrån (SCB), bearbetning av Samhällsanalys, Region Dalarna')),
                    div(class = 'rd-card',
                        h2(textOutput('rubrik_flyttrel_tabell', inline = TRUE)),
                        p(class = 'rd-subtitle',
                          'Kommuner med störst flyttutbyte med vald kommun, för valt urval ovan. Kommuner där både in- och utflyttning understiger 3 redovisas samlat som "Övriga kommuner".'),
-                       DTOutput('tab_flyttrel'))
+                       DTOutput('tab_flyttrel'),
+                       p(class = 'rd-kalla', 'Källa: Statistiska centralbyrån (SCB), bearbetning av Samhällsanalys, Region Dalarna'))
           ),
 
           # ================= Flik 5: In- och utvandring =================
@@ -185,7 +213,8 @@ shinyUI(
                        h2(textOutput('rubrik_fodelseland_tabell', inline = TRUE)),
                        p(class = 'rd-subtitle',
                          'Samtliga födelseländer i underlaget för vald region, med antal och andel av befolkningen.'),
-                       DTOutput('tab_fodelseland'))
+                       DTOutput('tab_fodelseland'),
+                       p(class = 'rd-kalla', 'Källa: Statistiska centralbyrån (SCB), bearbetning av Samhällsanalys, Region Dalarna'))
           ),
 
           # ================= Flik 7: Födda, döda & fruktsamhet =================
@@ -202,14 +231,50 @@ shinyUI(
                        girafeOutput('fig_fruktsamhet', height = '400px'))
           ),
 
-          # ================= Flik 8: Prognos & utfall =================
-          tabPanel('Prognos & utfall',
+          # ================= Flik 8: Prognos =================
+          tabPanel('Prognos',
+                   div(class = 'rd-card',
+                       h2(textOutput('rubrik_prognos_kommuner', inline = TRUE)),
+                       p(class = 'rd-subtitle',
+                         'Procentuell förändring av folkmängden mellan senaste utfallsåret och det valda antalet år framåt, enligt senaste prognosen. Samtliga Dalakommuner samt Dalarnas län (mörkare stapel).'),
+                       div(class = 'rd-slider-graybar',
+                           div(class = 'rd-controls',
+                               sliderInput('prognos_ar_framat', 'Antal år framåt',
+                                           min = 1, max = prognos_ar_max_framat,
+                                           value = min(10, prognos_ar_max_framat),
+                                           step = 1, sep = '', width = '320px'))),
+                       girafeOutput('fig_prognos_kommuner', height = '620px')),
+                   div(class = 'rd-card',
+                       h2(textOutput('rubrik_prognos_senaste', inline = TRUE)),
+                       p(class = 'rd-subtitle',
+                         'Heldragen linje visar faktiskt utfall (hela den historiska tidsserien i databasen), streckad linje visar senaste prognosen från senaste utfallsåret och framåt.'),
+                       div(class = 'rd-controls',
+                           radioButtons('prognos_senaste_matt', NULL,
+                                        choices = c('Antal', 'Procent'),
+                                        selected = 'Antal', inline = TRUE)),
+                       div(class = 'rd-controls',
+                           selectInput('prognos_aldersgrupp', 'Åldersgrupper',
+                                       choices = names(prognos_aldersgrupper),
+                                       selected = 'Alla åldrar', width = '200px'),
+                           checkboxInput('prognos_egen_aktiv', 'Skapa egen åldersgrupp', value = FALSE)),
+                       conditionalPanel(
+                         condition = 'input.prognos_egen_aktiv == true',
+                         div(class = 'rd-controls',
+                             sliderInput('prognos_egen_alder', 'Egen åldersgrupp (min-max år)',
+                                         min = 0, max = prognos_alder_max,
+                                         value = c(0, prognos_alder_max),
+                                         step = 1, sep = '', width = '420px'))),
+                       girafeOutput('fig_prognos_senaste', height = '420px'))
+          ),
+
+          # ================= Flik 9: Prognos vs. utfall =================
+          tabPanel('Prognos vs. utfall',
                    div(class = 'rd-card',
                        h2(textOutput('rubrik_prognos', inline = TRUE)),
                        p(class = 'rd-subtitle',
-                         'Heldragen linje visar faktisk folkmängd, streckade linjer visar valda prognosomgångar.'),
+                         'Heldragen linje visar faktisk folkmängd, streckade linjer visar valda prognosår.'),
                        div(class = 'rd-controls',
-                           selectizeInput('valda_prognoser', 'Prognosomgångar',
+                           selectizeInput('valda_prognoser', 'Prognosår',
                                           choices  = prognosar_val,
                                           selected = head(prognosar_val, 2),
                                           multiple = TRUE, width = '320px')),
@@ -217,12 +282,12 @@ shinyUI(
                    div(class = 'rd-card',
                        h2(textOutput('rubrik_avvikelse', inline = TRUE)),
                        p(class = 'rd-subtitle',
-                         'Skillnad mellan prognos och utfall (prognos minus utfall), en linje per prognosomgång. Värden över nollstrecket = prognosen överskattade folkmängden.'),
+                         'Skillnad mellan utfall och prognos (utfall minus prognos), en linje per prognosår. Värden över nollstrecket = utfallet blev högre än prognosen, under = utfallet blev lägre.'),
                        girafeOutput('fig_avvikelse', height = '380px')),
                    div(class = 'rd-card',
                        h2(textOutput('rubrik_avvikelse_alder', inline = TRUE)),
                        p(class = 'rd-subtitle',
-                         'Prognosavvikelse uppdelad på 10-årsklasser för valt utfallsår - visar i vilka åldrar prognoserna träffar sämst, t.ex. om flyttbenägna unga över- eller underskattas.'),
+                         'Prognosavvikelse uppdelad på 10-årsklasser för valt utfallsår - visar i vilka åldrar prognoserna träffar sämst, t.ex. om flyttbenägna unga över- eller underskattas. Över nollstrecket = utfallet blev högre än prognosen, under = lägre. Styrs av Prognosår-filtret ovan.'),
                        div(class = 'rd-controls',
                            selectInput('avvikelse_ar', 'Utfallsår',
                                        choices = avvikelse_ar_val, width = '140px')),
@@ -238,7 +303,18 @@ shinyUI(
                        p('Flyttrelationerna bygger på mikrodata. Tal under 3 visas som "färre än 3" och kommuner med genomgående låga tal redovisas samlat. Vid små urval (enskilda åldersgrupper och enstaka år) kan talen vara låga - slå ihop flera år i årsintervallet för stabilare bilder.'),
                        p('Kontakt: ',
                          tags$a(href = 'mailto:samhallsanalys@regiondalarna.se',
-                                'samhallsanalys@regiondalarna.se'))))
+                                'samhallsanalys@regiondalarna.se'))),
+                   div(class = 'rd-card',
+                       h2('Ändringslogg'),
+                       p(class = 'rd-subtitle', 'Senaste uppdateringarna i applikationen, senaste datumet överst.'),
+                       tagList(
+                         lapply(andringslogg, function(post) {
+                           tagList(
+                             h3(post$datum),
+                             tags$ul(lapply(post$andringar, tags$li))
+                           )
+                         })
+                       )))
         )
       )
     ),
