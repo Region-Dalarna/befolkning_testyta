@@ -13,6 +13,7 @@ library(stringr)
 library(ggplot2)
 library(sf)
 library(leaflet)
+library(writexl)   # för nedladdning av dataset som Excel-filer
 
 # Allmänna options - TRUE = visa inte R-felmeddelanden i appen, FALSE = visa felmeddelanden från R på webben
 options(shiny.sanitize.errors = FALSE)
@@ -36,6 +37,15 @@ rd_farg <- c(
 
 # Färger för befolkningspyramidens kön (önskemål från verksamheten)
 farg_kon <- c('Kvinnor' = "#e2a855", 'Män' = "#459079")
+
+# Fasta färger för "Andel utrikes födda per kommun" - Dalarnas län och riket
+# ska alltid ha samma färg oavsett vilken region som är vald i huvudfiltret.
+farg_fodelseland_jmf <- c(
+  'Vald kommun'  = unname(rd_farg[['primary']]),
+  'Dalarnas län'  = unname(rd_farg[['bla_mork']]),
+  'Riket'         = unname(rd_farg[['gra_mork']]),
+  'Övriga'        = unname(rd_farg[['bla_ljus']])
+)
 
 # ==== 2. Hämta data ==========================================================
 # Riket ("00"), Dalarnas län ("20") samt samtliga Dalakommuner ("20xx")
@@ -255,12 +265,16 @@ aldersgrupp_val <- flyttar_aldersgrp %>%
 # Förvalda grupper: barn och unga (prioritet A2 i kommundialogen)
 aldersgrupp_barn <- aldersgrupp_val[parse_alder(aldersgrupp_val) < 20]
 
-# Val för flyttrelationsfliken (mikro_db.flyttrelationer) - endast Dalakommuner
+# Val för flyttrelationsfliken (mikro_db.flyttrelationer) - endast Dalakommuner.
+# "Dalarna" (kod "20") läggs till som ett aggregerat val högst upp i listan -
+# det summerar samtliga Dalakommuner, inklusive flyttar mellan dem, se
+# flyttrel_urval() i server.R.
 rel_kommun_val <- flyttrelationer %>%
   filter(substr(kommun, 1, 2) == "20") %>%
   distinct(kommun, kommun_namn) %>%
   arrange(kommun_namn) %>%
   { setNames(.$kommun, .$kommun_namn) }
+rel_kommun_val <- c("Dalarna" = "20", rel_kommun_val)
 rel_alder_val <- flyttrelationer %>%
   distinct(alder_grp) %>%
   mutate(sort_tal = if_else(str_starts(str_trim(alder_grp), "-"),
@@ -279,7 +293,45 @@ avvikelse_ar_val <- sort(intersect(unique(prognos_utfall$ar),
                                    unique(totfolkmangd$ar)),
                          decreasing = TRUE)
 
-# ==== 7. ggplot-tema och girafe-inställningar ================================
+# ==== 6b. Åldersgrupper för fliken Prognos ===================================
+# Fasta åldersgrupper (min, max) - "Alla åldrar" är förvalt. Inf = ingen övre gräns.
+prognos_aldersgrupper <- list(
+  "Alla åldrar" = c(0, Inf),
+  "0-19 år"     = c(0, 19),
+  "20-66 år"    = c(20, 66),
+  "67-79 år"    = c(67, 79),
+  "80+ år"      = c(80, Inf),
+  "90+ år"      = c(90, Inf)
+)
+
+# Högsta ålder i underlaget - används som övre gräns för "Skapa åldersgrupp"-slidern
+prognos_alder_max <- totfolkmangd %>%
+  filter(!ar_totalrad(alder)) %>%
+  pull(alder) %>%
+  parse_alder() %>%
+  max(na.rm = TRUE)
+
+# Hur många år framåt prognosen som längst sträcker sig (för slidern "Antal år framåt")
+prognos_ar_max_framat <- prognos_utfall %>%
+  filter(prognos_ar == max(prognos_ar, na.rm = TRUE)) %>%
+  summarise(diff = max(ar, na.rm = TRUE) - max(prognos_ar, na.rm = TRUE)) %>%
+  pull(diff) %>%
+  pmax(1) %>%
+  min(30)
+
+# ==== 6c. Ändringslogg (visas under fliken "Om") ==============================
+# Lägg nya poster överst (senaste datum först) - varje post är en lista med
+# datum och en vektor av korta punkter. Visas som en enkel logg i UI:t.
+andringslogg <- list(
+  list(datum = '2026-08-04', andringar = c(
+    'Ny flik "Prognos" har lagts till, med ett diagram över senaste prognosen tillsammans med utfallet, ett diagram över procentuell befolkningsförändring ett valfritt antal år framåt, och ett diagram som jämför alla Dalakommuner och Dalarnas län.',
+    'Fliken "Prognos & utfall" har döpts om till "Prognos vs. utfall".',
+    'Befolkningspyramiden (Översikt) kan nu animeras år för år.',
+    '"Dalarna" har lagts till som ett nytt val i Flyttrelationers Kommun/Län-filter, som summerar samtliga Dalakommuner.',
+    'Diagrammet "Flyttnetto per åldersgrupp" har byggts om och visar nu även brutto in- och utflyttning, inte bara nettot.',
+    'Den här ändringsloggen har lagts till under fliken "Om".'
+  ))
+)
 # OBS: kräver att Poppins finns installerat på servern för korrekta textmått i
 # SVG:n. Saknas typsnittet renderar webbläsaren ändå Poppins via CSS:en, men
 # byt till base_family = "" om ni får varningar vid rendering.
@@ -293,9 +345,17 @@ theme_rd <- function(bas = 11.5) {
       legend.position    = "bottom",
       legend.title       = element_blank(),
       legend.text        = element_text(size = rel(0.9)),
+      plot.caption       = element_text(color = "#969696", size = rel(0.68),
+                                        hjust = 0, margin = margin(t = 10)),
       plot.margin        = margin(8, 12, 4, 4)
     )
 }
+
+# Källhänvisningar för diagrammens "caption" (labs(caption = ...)).
+# kalla_bada används där diagrammet blandar faktiskt utfall och egen prognos.
+kalla_scb     <- 'Källa: Statistiska centralbyrån (SCB), bearbetning av Samhällsanalys, Region Dalarna'
+kalla_prognos <- 'Källa: Egen prognos av Samhällsanalys, Region Dalarna'
+kalla_bada    <- 'Källa: SCB (utfall) och egen prognos (prognos), bearbetning av Samhällsanalys, Region Dalarna'
 
 skapa_girafe <- function(p, hojd = 4.5, bredd = 9) {
   girafe(
@@ -316,3 +376,45 @@ skapa_girafe <- function(p, hojd = 4.5, bredd = 9) {
     )
   )
 }
+
+# ==== 9. Nedladdningsbara dataset (nedladdningsknappen i sidopanelen) =======
+# OBS - sekretess: flyttrelationer bygger på mikrodata och maskas därför på
+# samma sätt som i appens egen tabell (tal 1-2 sätts till NA/tomt) innan
+# exporten. Övriga tabeller är redan SCB:s publicerade öppna statistik och
+# exporteras oförändrade. kommuner_sf/lan_sf (kartgeometrier) ingår inte -
+# de är inte lämpade för Excel-rader/kolumner.
+nedladdning_dataset <- list(
+  'Folkmängd'                          = totfolkmangd,
+  'Födda'                              = fodda,
+  'Döda'                               = doda,
+  'Invandring'                         = invandring,
+  'Utvandring'                         = utvandring,
+  'Inrikes inflyttade'                 = inrikes_inflyttade,
+  'Inrikes utflyttade'                 = inrikes_utflyttade,
+  'Inflyttningar över länsgräns'       = inflytt_lansgrans,
+  'Utflyttningar över länsgräns'       = utflytt_lansgrans,
+  'Kvinnor i barnafödande ålder'       = folkmangd_modrar,
+  'Befolkningsprognoser'               = prognos_utfall,
+  'Flyttar per åldersgrupp'            = flyttar_aldersgrp,
+  'Befolkning efter födelseland'       = bef_fodelseland,
+  'Flyttrelationer mellan kommuner'    = flyttrelationer %>%
+    mutate(antal = if_else(abs(antal) > 0 & abs(antal) < 3, NA_real_, antal))
+)
+
+# Excel tillåter max 31 tecken och vissa specialtecken (\ / ? * [ ]) inte i
+# fliknamn - städa dataset-namnen så de alltid funkar som arknamn.
+sanera_arknamn <- function(x) {
+  for (tecken in c('\\', '/', '*', '?', ':', '[', ']')) {
+    x <- gsub(tecken, '', x, fixed = TRUE)
+  }
+  substr(x, 1, 31)
+}
+
+# Städar ett dataset-namn för användning i nedladdade filnamn.
+sanera_filnamn <- function(x) {
+  x <- gsub('[^A-Za-z0-9åäöÅÄÖ]+', '_', x)
+  gsub('_+', '_', x)
+}
+
+# Gräns för hur många rader ett dataset får ha för att tas med i exporten.
+nedladdning_max_rader <- 1000000
