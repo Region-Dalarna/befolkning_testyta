@@ -14,10 +14,8 @@ shinyServer(function(input, output, session) {
     rubrik_komponenter      = 'Förändringens komponenter',
     rubrik_netton           = 'Netton över tid',
     rubrik_inrikes_flytt    = 'Flyttningar inom och utanför länet',
-    rubrik_flyttnetto_alder = 'Inrikes flyttnetto per ålder',
     rubrik_netto_aldersgrupp = 'Flyttnetto per åldersgrupp över tid',
     rubrik_utrikes          = 'Invandring och utvandring',
-    rubrik_utrikes_alder    = 'Utrikes flyttnetto per ålder',
     rubrik_fodelseland_tid  = 'Utrikes födda efter födelseland',
     rubrik_fodda_doda       = 'Födda och döda',
     rubrik_prognos          = 'Prognoser mot faktisk utveckling',
@@ -29,6 +27,17 @@ shinyServer(function(input, output, session) {
       output[[id_lokal]] <- renderText(paste0(rubriker[[id_lokal]], ' - ', regionnamn()))
     })
   }
+
+  # rubrik_flyttnetto_alder och rubrik_utrikes_alder får med valt årsintervall
+  # eftersom respektive diagram visar genomsnitt per år i det intervallet
+  output$rubrik_flyttnetto_alder <- renderText({
+    paste0('Inrikes flyttnetto per ålder - ', regionnamn(),
+           ' år ', input$ar_intervall[1], '\u2013', input$ar_intervall[2])
+  })
+  output$rubrik_utrikes_alder <- renderText({
+    paste0('Utrikes flyttnetto per ålder - ', regionnamn(),
+           ' år ', input$ar_intervall[1], '\u2013', input$ar_intervall[2])
+  })
   # Fruktsamheten visar alltid även riket - speglas i rubriken
   output$rubrik_fruktsamhet <- renderText({
     paste0('Summerad fruktsamhet - ', regionnamn(),
@@ -102,7 +111,7 @@ shinyServer(function(input, output, session) {
       scale_color_manual(values = unname(rd_farg[c('primary', 'gra_mork')])) +
       scale_y_continuous(labels = fmt) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = 'Antal personer') +
+      labs(x = NULL, y = 'Antal personer', caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.6)
@@ -138,7 +147,7 @@ shinyServer(function(input, output, session) {
                                    `FALSE` = rd_farg[['rod']]),
                         guide = 'none') +
       scale_y_continuous(labels = fmt) +
-      labs(x = 'Ålder', y = 'Flyttnetto, genomsnitt per år') +
+      labs(x = 'Ålder', y = 'Flyttnetto, genomsnitt per år', caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.6)
@@ -218,7 +227,7 @@ shinyServer(function(input, output, session) {
       scale_color_manual(values = unname(rd_farg[c('primary', 'bla_klar', 'gra_mork')])) +
       scale_y_continuous(labels = fmt) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = ytitel) +
+      labs(x = NULL, y = ytitel, caption = kalla_scb) +
       theme_rd() +
       (if (!isTRUE(input$jamfor_riket)) theme(legend.position = 'none') else theme())
 
@@ -249,7 +258,7 @@ shinyServer(function(input, output, session) {
       geom_vline(xintercept = 0, color = '#ffffff', linewidth = 0.3) +
       scale_fill_manual(values = farg_kon) +
       scale_x_continuous(breaks = brytpunkter, labels = function(x) fmt(abs(x))) +
-      labs(x = 'Antal', y = 'Ålder') +
+      labs(x = 'Antal', y = 'Ålder', caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 5.6)
@@ -285,7 +294,7 @@ shinyServer(function(input, output, session) {
       scale_fill_manual(values = pal_komp) +
       scale_y_continuous(labels = fmt) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = 'Antal personer') +
+      labs(x = NULL, y = 'Antal personer', caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 5)
@@ -311,7 +320,7 @@ shinyServer(function(input, output, session) {
       scale_color_manual(values = unname(rd_farg[c('primary', 'bla_klar', 'gra_mork')])) +
       scale_y_continuous(labels = fmt) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = 'Antal personer') +
+      labs(x = NULL, y = 'Antal personer', caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.4)
@@ -338,16 +347,31 @@ shinyServer(function(input, output, session) {
     validate(need(nrow(df) > 0 && sum(abs(df$antal), na.rm = TRUE) > 0,
                   'Inget underlag för flyttningar inom/utanför länet för vald region.'))
 
+    # På läns-/riksnivå (2-teckenskod: "20" eller "00") är "inom länet" bara
+    # flyttar mellan kommuner i samma län - inte relevant för helheten, så de
+    # tas bort ur både staplarna och nettolinjen.
+    if (nchar(input$region) == 2) {
+      df <- df %>% filter(omrade != 'inom länet')
+    }
+    kategorier_alla <- c('Inflyttning inom länet', 'Inflyttning övriga län',
+                         'Utflyttning inom länet', 'Utflyttning övriga län')
+    if (nchar(input$region) == 2) {
+      kategorier_alla <- kategorier_alla[!str_detect(kategorier_alla, 'inom länet')]
+    }
     df <- df %>%
-      mutate(kategori = factor(kategori,
-                               levels = c('Inflyttning inom länet', 'Inflyttning övriga län',
-                                          'Utflyttning inom länet', 'Utflyttning övriga län')))
+      mutate(kategori = factor(kategori, levels = kategorier_alla))
     netto <- df %>% group_by(ar) %>% summarise(netto = sum(visat), .groups = 'drop')
 
-    pal_flytt <- setNames(
-      unname(rd_farg[c('primary', 'bla_mork', 'bla_ljus', 'bla_blek')]),
-      levels(df$kategori)
+    # Fast färgkarta per kategorinamn (inte per positionsordning i levels()),
+    # så att t.ex. "Inflyttning övriga län" alltid har samma färg oavsett om
+    # "inom länet"-kategorierna visas eller inte.
+    pal_flytt_alla <- c(
+      'Inflyttning inom länet'  = unname(rd_farg[['primary']]),
+      'Inflyttning övriga län'  = unname(rd_farg[['bla_mork']]),
+      'Utflyttning inom länet'  = unname(rd_farg[['bla_ljus']]),
+      'Utflyttning övriga län'  = unname(rd_farg[['bla_blek']])
     )
+    pal_flytt <- pal_flytt_alla[kategorier_alla]
 
     p <- ggplot() +
       geom_col_interactive(
@@ -367,7 +391,7 @@ shinyServer(function(input, output, session) {
       scale_fill_manual(values = pal_flytt) +
       scale_y_continuous(labels = function(x) fmt(abs(x))) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = 'Antal personer (utflyttning nedåt)') +
+      labs(x = NULL, y = 'Antal personer (utflyttning nedåt)', caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 5)
@@ -411,7 +435,7 @@ shinyServer(function(input, output, session) {
       scale_color_manual(values = pal) +
       scale_y_continuous(labels = fmt) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = 'Inrikes flyttnetto') +
+      labs(x = NULL, y = 'Inrikes flyttnetto', caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.6)
@@ -444,18 +468,33 @@ shinyServer(function(input, output, session) {
                               '<br>Utflyttade: ', fmt(utflode)))
     validate(need(nrow(df) > 0, 'Ingen data för valt år.'))
 
-    p <- ggplot(df, aes(alder, netto, fill = netto >= 0)) +
-      geom_col_interactive(aes(tooltip = tooltip, data_id = alder), width = 0.75) +
-      geom_hline(yintercept = 0, color = rd_farg[['gra_mork']], linewidth = 0.3) +
-      scale_fill_manual(values = c(`TRUE`  = rd_farg[['primary']],
-                                   `FALSE` = rd_farg[['rod']]),
-                        guide = 'none') +
-      scale_y_continuous(labels = fmt) +
-      labs(x = NULL, y = 'Inrikes flyttnetto') +
-      theme_rd() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    # Ljusgrå bakgrundsstaplar för bruttoflödena (inflyttning positivt, utflyttning
+    # negativt) i två nyanser, med de vanliga blå/röda nettostaplarna smalare
+    # ovanpå. Åldersgrupperna ligger på den lodräta axeln och antal/netto på
+    # den vågräta.
+    p <- ggplot(df) +
+      geom_col(aes(x = inflode, y = alder, fill = 'Inflyttning (brutto)'), width = 0.75) +
+      geom_col(aes(x = -utflode, y = alder, fill = 'Utflyttning (brutto)'), width = 0.75) +
+      geom_col_interactive(
+        aes(x = netto, y = alder,
+            fill = if_else(netto >= 0, 'Flyttnetto, positivt', 'Flyttnetto, negativt'),
+            tooltip = tooltip, data_id = alder),
+        width = 0.4) +
+      geom_vline(xintercept = 0, color = rd_farg[['gra_mork']], linewidth = 0.3) +
+      scale_fill_manual(values = c('Inflyttning (brutto)'   = '#e6e6e6',
+                                   'Utflyttning (brutto)'   = '#c9c9c9',
+                                   'Flyttnetto, positivt'   = unname(rd_farg[['primary']]),
+                                   'Flyttnetto, negativt'   = unname(rd_farg[['rod']])),
+                        name = NULL,
+                        breaks = c('Inflyttning (brutto)', 'Utflyttning (brutto)',
+                                   'Flyttnetto, positivt', 'Flyttnetto, negativt')) +
+      scale_x_continuous(labels = function(x) fmt(abs(x))) +
+      labs(y = NULL, x = 'Antal personer / flyttnetto', caption = kalla_scb) +
+      theme_rd()
 
-    skapa_girafe(p, hojd = 4.6)
+    # Stående format (högre än brett) enligt önskemål, istället för det
+    # liggande standardformatet i skapa_girafe().
+    skapa_girafe(p, hojd = 7.5, bredd = 6)
   })
 
   # ==== Flik 4: Flyttrelationer ==============================================
@@ -475,9 +514,15 @@ shinyServer(function(input, output, session) {
 
   flyttrel_urval <- reactive({
     req(input$rel_kommun, input$rel_alder, input$rel_ar)
-    df <- flyttrelationer %>%
-      filter(kommun == input$rel_kommun,
-             ar >= input$rel_ar[1], ar <= input$rel_ar[2],
+    # "Dalarna" (kod "20") summerar samtliga Dalakommuner, inklusive flyttar
+    # mellan dem - annars filtreras på en enskild kommun som vanligt.
+    df_bas <- if (input$rel_kommun == '20') {
+      flyttrelationer %>% filter(substr(kommun, 1, 2) == '20')
+    } else {
+      flyttrelationer %>% filter(kommun == input$rel_kommun)
+    }
+    df <- df_bas %>%
+      filter(ar >= input$rel_ar[1], ar <= input$rel_ar[2],
              alder_grp %in% input$rel_alder) %>%
       mutate(typ = case_when(
         str_starts(str_to_lower(flytt_typ), 'in') ~ 'Inflyttning',
@@ -535,6 +580,11 @@ shinyServer(function(input, output, session) {
     namn_vald <- rel_kommunnamn()
     vals <- geo_joined[[input$rel_typ]]
 
+    # Leaflets hover-etiketter kan i sällsynta fall bli kvarhängande ("frysta")
+    # när polygonerna byts ut medan muspekaren är kvar över kartan - be
+    # webbläsaren explicit stänga alla öppna etiketter innan omritningen.
+    session$sendCustomMessage('rd_stang_tooltips', karta_id)
+
     if (input$rel_typ == 'Flyttnetto') {
       maxabs <- max(abs(vals), na.rm = TRUE)
       if (!is.finite(maxabs) || maxabs == 0) maxabs <- 1
@@ -581,10 +631,18 @@ shinyServer(function(input, output, session) {
                 title = input$rel_typ, labFormat = legend_fmt, opacity = 0.85)
 
     if (markera_vald) {
+      # Vid "Dalarna" (kod 20) används länspolygonen (lan_sf) för konturen så
+      # att bara YTTERGRÄNSEN mot omvärlden ritas tjock - inte varje enskild
+      # kommungräns inuti länet.
+      vald_geo <- if (input$rel_kommun == '20') {
+        filter(lan_sf, lankod == '20')
+      } else {
+        filter(kommuner_sf, kommunkod == input$rel_kommun)
+      }
       proxy %>%
         addPolygons(data = lan_sf, group = 'overlagg', fill = FALSE,
                     color = rd_farg[['gra']], weight = 0.8) %>%
-        addPolygons(data = filter(kommuner_sf, kommunkod == input$rel_kommun),
+        addPolygons(data = vald_geo,
                     group = 'overlagg', fill = FALSE,
                     color = rd_farg[['gra_mork']], weight = 2.5)
     }
@@ -715,7 +773,8 @@ shinyServer(function(input, output, session) {
       } else fmt) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
       labs(x = NULL,
-           y = if (visa_andel) 'Andel av hela befolkningen' else 'Antal personer') +
+           y = if (visa_andel) 'Andel av hela befolkningen' else 'Antal personer',
+           caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.8)
@@ -741,24 +800,31 @@ shinyServer(function(input, output, session) {
         utrikes = sum(varde[str_to_lower(fodelseregion) != 'sverige'], na.rm = TRUE),
         .groups = 'drop') %>%
       filter(tot > 0) %>%
+      # Dalarnas län och Riket behåller alltid samma färg; vald kommun (om det
+      # inte redan är Dalarna/Riket som är valt) får en egen färg; övriga är grå.
       mutate(andel = utrikes / tot,
-             vald  = regionkod == input$region,
+             grupp = case_when(
+               regionkod == '20'          ~ 'Dalarnas län',
+               regionkod == '00'          ~ 'Riket',
+               regionkod == input$region  ~ 'Vald kommun',
+               TRUE                       ~ 'Övriga'),
              region = reorder(region, andel),
              tooltip = paste0(region,
                               '<br>Andel utrikes födda: ', fmt(100 * andel, 1), ' %',
                               '<br>Antal utrikes födda: ', fmt(utrikes),
                               '<br>Folkmängd: ', fmt(tot)))
     validate(need(nrow(df) > 0, 'Ingen data för valt urval.'))
+    # OBS: om Riket ("00") saknas i df beror det på att bef_fodelseland inte
+    # innehåller någon rad med regionkod "00" för det här året - kontrollera
+    # koden för riket i källtabellen (se global.R:s hamta_scb-filter).
 
-    p <- ggplot(df, aes(x = andel, y = region, fill = vald)) +
+    p <- ggplot(df, aes(x = andel, y = region, fill = grupp)) +
       geom_col_interactive(aes(tooltip = tooltip, data_id = region),
                            orientation = 'y', width = 0.75) +
-      scale_fill_manual(values = c(`TRUE`  = rd_farg[['primary']],
-                                   `FALSE` = rd_farg[['bla_ljus']]),
-                        guide = 'none') +
+      scale_fill_manual(values = farg_fodelseland_jmf, name = NULL) +
       scale_x_continuous(labels = function(x) paste0(fmt(100 * x), ' %'),
                          expand = expansion(mult = c(0, 0.05))) +
-      labs(x = 'Andel utrikes födda', y = NULL) +
+      labs(x = 'Andel utrikes födda', y = NULL, caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 5.4)
@@ -811,13 +877,13 @@ shinyServer(function(input, output, session) {
       scale_color_manual(values = unname(rd_farg[c('primary', 'gra_mork')])) +
       scale_y_continuous(labels = function(x) fmt(x, 1)) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = 'Barn per kvinna') +
+      labs(x = NULL, y = 'Barn per kvinna', caption = kalla_scb) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.4)
   })
 
-  # ==== Flik 8: Prognos & utfall =============================================
+  # ==== Flik 9: Prognos vs. utfall ============================================
 
   output$fig_prognos <- renderGirafe({
     utfall <- summera_ar(totfolkmangd, input$kon) %>%
@@ -854,7 +920,7 @@ shinyServer(function(input, output, session) {
       scale_color_manual(values = pal) +
       scale_y_continuous(labels = fmt) +
       scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = 'Folkmängd') +
+      labs(x = NULL, y = 'Folkmängd', caption = kalla_bada) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.8)
@@ -867,14 +933,16 @@ shinyServer(function(input, output, session) {
 
     df <- prognos_summerad() %>%
       inner_join(utfall, by = 'ar') %>%
-      mutate(avvikelse = varde - utfall,
+      # Avvikelse = utfall minus prognos: positivt (över nollstrecket) = utfallet
+      # blev högre än prognosen, negativt (under) = utfallet blev lägre.
+      mutate(avvikelse = utfall - varde,
              tooltip = paste0(prognos, ', ', ar,
                               '<br>Avvikelse: ',
                               if_else(avvikelse >= 0, '+', '\u2212'), fmt(abs(avvikelse)),
                               '<br>Prognos: ', fmt(varde),
                               '<br>Utfall: ', fmt(utfall)))
     validate(need(nrow(df) > 0,
-                  'Inga år där både prognos och utfall finns för valda prognosomgångar.'))
+                  'Inga år där både prognos och utfall finns för valda prognosår.'))
 
     pal <- setNames(rep(unname(rd_farg[c('primary', 'bla_klar', 'bla_mork', 'bla_ljus')]),
                         length.out = n_distinct(df$prognos)),
@@ -887,8 +955,8 @@ shinyServer(function(input, output, session) {
                              size = 1.8) +
       scale_color_manual(values = pal) +
       scale_y_continuous(labels = fmt) +
-      scale_x_continuous(breaks = scales::pretty_breaks()) +
-      labs(x = NULL, y = 'Prognos minus utfall') +
+      scale_x_continuous(breaks = sort(unique(df$ar)), labels = function(x) as.character(as.integer(x))) +
+      labs(x = NULL, y = 'Utfall minus prognos', caption = kalla_bada) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.2)
@@ -924,14 +992,15 @@ shinyServer(function(input, output, session) {
 
     df <- prog_alder %>%
       inner_join(utfall_alder, by = 'aldersklass') %>%
-      mutate(avvikelse = prognos_varde - utfall,
+      # Samma konvention som fig_avvikelse: utfall minus prognos.
+      mutate(avvikelse = utfall - prognos_varde,
              tooltip = paste0(prognos, ', ', aldersklass, ' år',
                               '<br>Avvikelse: ',
                               if_else(avvikelse >= 0, '+', '\u2212'), fmt(abs(avvikelse)),
                               '<br>Prognos: ', fmt(prognos_varde),
                               '<br>Utfall: ', fmt(utfall)))
     validate(need(nrow(df) > 0,
-                  'Ingen prognosdata för valt utfallsår och valda prognosomgångar.'))
+                  'Ingen prognosdata för valt utfallsår och valda prognosår.'))
 
     pal <- setNames(rep(unname(rd_farg[c('primary', 'bla_klar', 'bla_mork', 'bla_ljus')]),
                         length.out = n_distinct(df$prognos)),
@@ -944,10 +1013,228 @@ shinyServer(function(input, output, session) {
       geom_hline(yintercept = 0, color = rd_farg[['gra_mork']], linewidth = 0.3) +
       scale_fill_manual(values = pal) +
       scale_y_continuous(labels = fmt) +
-      labs(x = 'Åldersklass', y = 'Prognos minus utfall') +
+      labs(x = 'Åldersklass', y = 'Utfall minus prognos', caption = kalla_bada) +
       theme_rd()
 
     skapa_girafe(p, hojd = 4.6)
   })
+
+  # ==== Flik 8: Prognos (ny flik) =============================================
+
+  output$rubrik_prognos_kommuner <- renderText({
+    paste0('Procentuell förändring per kommun, ', ar_max, '\u2013', ar_max + input$prognos_ar_framat)
+  })
+
+  # Stapeldiagram: alla Dalakommuner + Dalarnas län, procentuell förändring
+  # mellan senaste utfallsåret (ar_max) och (ar_max + antal år framåt), enligt
+  # senaste prognosomgången. Alltid "Totalt" (ej uppdelat på kön) och oberoende
+  # av huvudfiltrets valda region - visar hela länet på en gång.
+  output$fig_prognos_kommuner <- renderGirafe({
+    req(input$prognos_ar_framat)
+    n_ar <- input$prognos_ar_framat
+    malar <- ar_max + n_ar
+    senaste_prognosar <- max(prognosar_val)
+
+    bas <- summera_ar(totfolkmangd, 'Totalt') %>%
+      filter(ar == ar_max) %>%
+      select(regionkod, region, bas = varde)
+
+    prog <- prognos_utfall %>%
+      filter(prognos_ar == senaste_prognosar, ar == malar, !ar_totalrad(alder)) %>%
+      filtrera_kon('Totalt') %>%
+      group_by(regionkod, region) %>%
+      summarise(varde = sum(varde, na.rm = TRUE), .groups = 'drop')
+
+    df <- bas %>%
+      inner_join(prog, by = c('regionkod', 'region')) %>%
+      filter(regionkod == '20' | nchar(regionkod) == 4) %>%   # Dalarnas län + kommuner, ej riket
+      mutate(forandring = 100 * (varde / bas - 1),
+             region  = reorder(region, forandring),
+             lan_rad = regionkod == '20',
+             tooltip = paste0(region, '<br>Förändring ', ar_max, '\u2013', malar, ': ',
+                              if_else(forandring >= 0, '+', '\u2212'), fmt(abs(forandring), 1), ' %'))
+    validate(need(nrow(df) > 0,
+                  paste0('Ingen prognosdata (prognosår ', senaste_prognosar, ') för år ', malar, '.')))
+
+    p <- ggplot(df, aes(x = forandring, y = region, fill = lan_rad)) +
+      geom_col_interactive(aes(tooltip = tooltip, data_id = region), width = 0.75) +
+      geom_vline(xintercept = 0, color = rd_farg[['gra_mork']], linewidth = 0.3) +
+      scale_fill_manual(values = c(`TRUE` = rd_farg[['bla_mork']], `FALSE` = rd_farg[['primary']]),
+                        guide = 'none') +
+      scale_x_continuous(labels = function(x) paste0(fmt(x, 1), ' %')) +
+      labs(x = paste0('Procentuell förändring, ', ar_max, '\u2013', malar), y = NULL,
+           caption = kalla_bada) +
+      theme_rd()
+
+    skapa_girafe(p, hojd = 6.2)
+  })
+
+  # Åldersfilter för fliken: antingen en fast grupp (prognos_aldersgrupper) eller,
+  # om "Skapa egen åldersgrupp" är ikryssad, det fritt valda min-max-intervallet.
+  prognos_alderspann <- reactive({
+    if (isTRUE(input$prognos_egen_aktiv) && !is.null(input$prognos_egen_alder)) {
+      input$prognos_egen_alder
+    } else {
+      req(input$prognos_aldersgrupp)
+      prognos_aldersgrupper[[input$prognos_aldersgrupp]]
+    }
+  })
+
+  # Grå ur/aktivera "Åldersgrupper"-listrutan beroende på om "Skapa egen
+  # åldersgrupp" är ikryssad eller inte.
+  observeEvent(input$prognos_egen_aktiv, {
+    if (isTRUE(input$prognos_egen_aktiv)) {
+      shinyjs::disable('prognos_aldersgrupp')
+    } else {
+      shinyjs::enable('prognos_aldersgrupp')
+    }
+  }, ignoreNULL = FALSE)
+
+  prognos_alder_etikett <- reactive({
+    if (isTRUE(input$prognos_egen_aktiv) && !is.null(input$prognos_egen_alder)) {
+      paste0(input$prognos_egen_alder[1], '\u2013', input$prognos_egen_alder[2], ' år')
+    } else {
+      input$prognos_aldersgrupp
+    }
+  })
+
+  output$rubrik_prognos_senaste <- renderText({
+    paste0('Befolkningsutvecklingen enligt den senaste befolkningsprognosen - ', regionnamn(),
+           ' (', prognos_alder_etikett(), ')')
+  })
+
+  # Data avgränsad på valt åldersspann, summerad per år
+  prognos_data_alder <- function(df) {
+    span <- prognos_alderspann()
+    df %>%
+      filter(regionkod == input$region, !ar_totalrad(alder)) %>%
+      mutate(alder_num = parse_alder(alder)) %>%
+      filter(alder_num >= span[1], alder_num <= span[2]) %>%
+      filtrera_kon(input$kon) %>%
+      group_by(ar) %>%
+      summarise(varde = sum(varde, na.rm = TRUE), .groups = 'drop')
+  }
+
+  output$fig_prognos_senaste <- renderGirafe({
+    utfall <- prognos_data_alder(totfolkmangd)
+    validate(need(nrow(utfall) > 0, 'Ingen data för valt urval.'))
+    ar_sista <- max(utfall$ar)
+    bas_varde <- utfall$varde[utfall$ar == ar_sista]
+
+    senaste_prognosar <- max(prognosar_val)
+    prog <- prognos_utfall %>%
+      filter(regionkod == input$region, prognos_ar == senaste_prognosar,
+             !ar_totalrad(alder), ar >= ar_sista) %>%
+      mutate(alder_num = parse_alder(alder)) %>%
+      { span <- prognos_alderspann(); filter(., alder_num >= span[1], alder_num <= span[2]) } %>%
+      filtrera_kon(input$kon) %>%
+      group_by(ar) %>%
+      summarise(varde = sum(varde, na.rm = TRUE), .groups = 'drop')
+    validate(need(nrow(prog) > 0,
+                  paste0('Ingen prognosdata (prognosår ', senaste_prognosar, ') för valt urval.')))
+
+    # "Procent" visar förändring i procent sedan senaste utfallsåret (0 % =
+    # ar_sista) istället för folkmängd i antal.
+    visa_procent <- identical(input$prognos_senaste_matt, 'Procent')
+    if (visa_procent) {
+      utfall <- utfall %>% mutate(visat = 100 * (varde / bas_varde - 1))
+      prog   <- prog   %>% mutate(visat = 100 * (varde / bas_varde - 1))
+      ytitel <- paste0('Procentuell förändring sedan ', ar_sista)
+      fmt_y  <- function(x) paste0(fmt(x, 1), ' %')
+    } else {
+      utfall <- utfall %>% mutate(visat = varde)
+      prog   <- prog   %>% mutate(visat = varde)
+      ytitel <- 'Folkmängd'
+      fmt_y  <- fmt
+    }
+
+    p <- ggplot() +
+      (if (visa_procent) geom_hline(yintercept = 0, color = rd_farg[['gra']], linewidth = 0.4)) +
+      geom_line(data = utfall, aes(ar, visat, color = 'Utfall', group = 1), linewidth = 1.2) +
+      geom_point_interactive(
+        data = utfall,
+        aes(ar, visat, color = 'Utfall',
+            tooltip = paste0('Utfall år ', ar, ': ', fmt_y(visat)), data_id = paste('utfall', ar)),
+        size = 1.6) +
+      geom_line(data = prog, aes(ar, visat, color = paste('Prognos', senaste_prognosar), group = 1),
+                linetype = '42', linewidth = 1) +
+      geom_point_interactive(
+        data = prog,
+        aes(ar, visat, color = paste('Prognos', senaste_prognosar),
+            tooltip = paste0('Prognos ', senaste_prognosar, ', år ', ar, ': ', fmt_y(visat)),
+            data_id = paste('prognos', ar)),
+        size = 1.6) +
+      scale_color_manual(values = setNames(
+        unname(rd_farg[c('gra_mork', 'primary')]),
+        c('Utfall', paste('Prognos', senaste_prognosar)))) +
+      scale_y_continuous(labels = fmt_y) +
+      scale_x_continuous(breaks = scales::pretty_breaks()) +
+      labs(x = NULL, y = ytitel, caption = kalla_bada) +
+      theme_rd()
+
+    skapa_girafe(p, hojd = 4.6)
+  })
+
+  # ==== Nedladdning av dataset (sidopanelen) =================================
+
+  # "Alla dataset" i valet betyder att allt tas med, oavsett vad som i övrigt
+  # är markerat i samma listruta.
+  nedladdning_valda_namn <- reactive({
+    req(input$nedladdning_val)
+    if ('Alla dataset' %in% input$nedladdning_val) {
+      names(nedladdning_dataset)
+    } else {
+      intersect(input$nedladdning_val, names(nedladdning_dataset))
+    }
+  })
+
+  # Vilka av de valda dataseten som är för stora för att tas med (styrs av
+  # nedladdning_max_rader i global.R).
+  nedladdning_for_stora <- reactive({
+    namn <- nedladdning_valda_namn()
+    namn[vapply(namn, function(n) nrow(nedladdning_dataset[[n]]) > nedladdning_max_rader,
+                logical(1))]
+  })
+
+  output$nedladdning_info <- renderUI({
+    req(input$nedladdning_val)
+    stora <- nedladdning_for_stora()
+    if (length(stora) == 0) return(NULL)
+    div(class = 'rd-info',
+        HTML(paste0('<strong>Obs!</strong> ', paste(stora, collapse = ', '),
+                    ' innehåller fler än ', fmt(nedladdning_max_rader),
+                    ' rader och tas inte med i nedladdningen.')))
+  })
+
+  output$nedladdning_download <- downloadHandler(
+    filename = function() {
+      namn <- nedladdning_valda_namn()
+      if (length(namn) == 1) {
+        paste0(sanera_filnamn(namn), '_', Sys.Date(), '.xlsx')
+      } else {
+        paste0('befolkningsdata_dalarna_', Sys.Date(), '.xlsx')
+      }
+    },
+    content = function(file) {
+      namn <- nedladdning_valda_namn()
+      validate(need(length(namn) > 0, 'Inget dataset valt.'))
+
+      ark <- list()
+      for (n in namn) {
+        df <- nedladdning_dataset[[n]]
+        arknamn <- sanera_arknamn(n)
+        if (nrow(df) > nedladdning_max_rader) {
+          ark[[arknamn]] <- tibble(
+            Meddelande = paste0('Datasetet "', n, '" innehåller ', fmt(nrow(df)),
+                                ' rader, vilket överstiger gränsen på ',
+                                fmt(nedladdning_max_rader),
+                                ' rader för nedladdning, och exkluderades.'))
+        } else {
+          ark[[arknamn]] <- df
+        }
+      }
+      write_xlsx(ark, path = file)
+    }
+  )
 
 })
